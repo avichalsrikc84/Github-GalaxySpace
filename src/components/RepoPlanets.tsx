@@ -1,20 +1,29 @@
 "use client"
 
 import { useRef,useState,useEffect } from "react"
-import { useFrame } from "@react-three/fiber"
+import { useFrame,useThree } from "@react-three/fiber"
 import { Html,useTexture } from "@react-three/drei"
 
 import RepoMoons from "./RepoMoons"
 import RepoConnections from "./RepoConnections"
+import RepoDataStreams from "./RepoDataStreams"
 
-export default function RepoPlanets(){
+export default function RepoPlanets({selected,setSelected}:any){
 
 const groupRef = useRef<any>()
+
+const { camera } = useThree()
 
 const [repos,setRepos] = useState<any[]>([])
 const [folders,setFolders] = useState<any>({})
 
-/* load textures */
+const defaultCamera = {
+x:0,
+y:20,
+z:120
+}
+
+/* textures */
 
 const textures = useTexture({
 earth:"/textures/planets/earth.jpg",
@@ -55,7 +64,10 @@ if(!Array.isArray(data)) return
 const planets=data.slice(0,10).map((repo:any,i:number)=>({
 
 name:repo.name,
-stars:repo.stargazers_count||0,
+stars:repo.stargazers_count || 0,
+language:repo.language,
+owner:repo.owner.login,
+
 orbit:35+i*14,
 angle:Math.random()*Math.PI*2,
 tilt:(Math.random()*0.4)-0.2,
@@ -79,7 +91,7 @@ loadRepos()
 
 },[])
 
-/* fetch folders for moons */
+/* fetch folders */
 
 useEffect(()=>{
 
@@ -112,7 +124,7 @@ console.log("folder fetch error",err)
 
 },[repos])
 
-/* animation */
+/* planet animation */
 
 useFrame((state,delta)=>{
 
@@ -134,6 +146,20 @@ planet.position.z=repo.z
 planet.rotation.y+=delta*0.8
 
 })
+
+})
+
+/* camera focus */
+
+useFrame(()=>{
+
+if(!selected) return
+
+camera.position.x += (selected.x*1.5 - camera.position.x)*0.05
+camera.position.y += (15 - camera.position.y)*0.05
+camera.position.z += (selected.z*1.5 - camera.position.z)*0.05
+
+camera.lookAt(selected.x,0,selected.z)
 
 })
 
@@ -161,7 +187,10 @@ opacity={0.25}
 
 {/* planet */}
 
-<mesh rotation={[repo.tilt,0,0]}>
+<mesh
+rotation={[repo.tilt,0,0]}
+onClick={()=>setSelected(repo)}
+>
 
 <sphereGeometry args={[2.4,64,64]}/>
 
@@ -210,7 +239,7 @@ whiteSpace:"nowrap"
 
 )}
 
-{/* rings for popular repos */}
+{/* rings */}
 
 {repo.stars>10 &&(
 
@@ -233,9 +262,8 @@ roughness={1}
 
 ))}
 
-{/* connection lines */}
-
 <RepoConnections repos={repos}/>
+<RepoDataStreams repos={repos}/>
 
 </group>
 

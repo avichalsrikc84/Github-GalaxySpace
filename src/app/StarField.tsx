@@ -1,56 +1,121 @@
 "use client"
 
-import { useMemo, useRef } from "react"
-import { useFrame, useThree } from "@react-three/fiber"
-import { Points, PointMaterial } from "@react-three/drei"
+import { useRef,useMemo } from "react"
+import { useFrame } from "@react-three/fiber"
+import * as THREE from "three"
 
 export default function StarField(){
 
-const ref = useRef<any>()
-const { camera } = useThree()
+const pointsRef = useRef<any>()
 
-const positions = useMemo(()=>{
+const starCount = 6000
+const radius = 500
 
-const count = 20000
-const arr = new Float32Array(count*3)
+const {positions,colors,sizes} = useMemo(()=>{
 
-for(let i=0;i<count;i++){
+const pos = new Float32Array(starCount*3)
+const col = new Float32Array(starCount*3)
+const size = new Float32Array(starCount)
 
-arr[i*3] = (Math.random()-0.5)*800
-arr[i*3+1] = (Math.random()-0.5)*800
-arr[i*3+2] = (Math.random()-0.5)*800
+for(let i=0;i<starCount;i++){
+
+const r = radius * Math.random()
+
+const theta = Math.random()*Math.PI*2
+const phi = Math.acos((Math.random()*2)-1)
+
+pos[i*3] = r*Math.sin(phi)*Math.cos(theta)
+pos[i*3+1] = r*Math.sin(phi)*Math.sin(theta)
+pos[i*3+2] = r*Math.cos(phi)
+
+/* star color temperature */
+
+const temp = Math.random()
+
+let color = new THREE.Color()
+
+if(temp < 0.2){
+
+color.setRGB(1,0.5,0.5)   // red dwarf
+
+}else if(temp < 0.4){
+
+color.setRGB(1,0.7,0.5)   // orange
+
+}else if(temp < 0.7){
+
+color.setRGB(1,1,0.9)     // sun-like
+
+}else if(temp < 0.9){
+
+color.setRGB(0.8,0.9,1)   // white-blue
+
+}else{
+
+color.setRGB(0.6,0.8,1)   // blue giant
 
 }
 
-return arr
+col[i*3] = color.r
+col[i*3+1] = color.g
+col[i*3+2] = color.b
+
+size[i] = Math.random()*1.2 + 0.2
+
+}
+
+return{
+positions:pos,
+colors:col,
+sizes:size
+}
 
 },[])
 
-useFrame(()=>{
+useFrame((state)=>{
 
-if(ref.current){
+if(!pointsRef.current) return
 
-ref.current.position.x = camera.position.x
-ref.current.position.y = camera.position.y
-ref.current.position.z = camera.position.z
+const time = state.clock.getElapsedTime()
 
-}
+const material = pointsRef.current.material
+
+if(!material) return
+
+material.size = 0.6 + Math.sin(time*3)*0.05
 
 })
 
 return(
 
-<Points ref={ref} positions={positions} stride={3}>
+<points ref={pointsRef}>
 
-<PointMaterial
-transparent
-color="white"
-size={0.12}
+<bufferGeometry>
+
+<bufferAttribute
+attach="attributes-position"
+count={positions.length/3}
+array={positions}
+itemSize={3}
+/>
+
+<bufferAttribute
+attach="attributes-color"
+count={colors.length/3}
+array={colors}
+itemSize={3}
+/>
+
+</bufferGeometry>
+
+<pointsMaterial
+vertexColors
+size={0.6}
 sizeAttenuation
 depthWrite={false}
 />
 
-</Points>
+</points>
 
 )
 

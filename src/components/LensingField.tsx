@@ -1,29 +1,27 @@
 "use client"
 
-import { useFrame } from "@react-three/fiber"
 import { useRef } from "react"
-import * as THREE from "three"
+import { useFrame } from "@react-three/fiber"
 
 export default function LensingField(){
 
-const meshRef = useRef<any>()
+const ref = useRef<any>()
 
-useFrame(({clock})=>{
-if(meshRef.current){
-meshRef.current.material.uniforms.time.value = clock.getElapsedTime()
+useFrame((state)=>{
+if(ref.current){
+ref.current.material.uniforms.time.value = state.clock.elapsedTime
 }
 })
 
 return(
 
-<mesh ref={meshRef} position={[0,0,0]}>
+<mesh ref={ref}>
 
-<sphereGeometry args={[12,64,64]} />
+<sphereGeometry args={[8,64,64]} />
 
 <shaderMaterial
 
 transparent
-side={THREE.BackSide}
 
 uniforms={{
 time:{value:0}
@@ -31,13 +29,15 @@ time:{value:0}
 
 vertexShader={`
 
-varying vec3 vPos;
+varying vec2 vUv;
 
 void main(){
 
-vPos = position;
+vUv = uv;
 
-gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0);
+gl_Position = projectionMatrix *
+modelViewMatrix *
+vec4(position,1.0);
 
 }
 
@@ -45,15 +45,22 @@ gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0);
 
 fragmentShader={`
 
-varying vec3 vPos;
+uniform float time;
+varying vec2 vUv;
 
 void main(){
 
-float r = length(vPos);
+vec2 center = vec2(0.5);
 
-float intensity = 1.0 - smoothstep(5.0,12.0,r);
+float dist = distance(vUv,center);
 
-gl_FragColor = vec4(0.0,0.0,0.0,intensity*0.25);
+float distortion = 0.02/(dist+0.1);
+
+vec2 uv = vUv + (vUv-center)*distortion;
+
+float fade = smoothstep(0.5,0.1,dist);
+
+gl_FragColor = vec4(vec3(0.0),fade*0.15);
 
 }
 

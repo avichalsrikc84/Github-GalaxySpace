@@ -3,6 +3,7 @@
 import { useRef,useState,useEffect } from "react"
 import { useFrame,useThree } from "@react-three/fiber"
 import { Html,useTexture } from "@react-three/drei"
+import * as THREE from "three"
 
 import RepoMoons from "./RepoMoons"
 import RepoConnections from "./RepoConnections"
@@ -11,17 +12,29 @@ import RepoDataStreams from "./RepoDataStreams"
 export default function RepoPlanets({selected,setSelected}:any){
 
 const groupRef = useRef<any>()
-
 const { camera } = useThree()
 
 const [repos,setRepos] = useState<any[]>([])
 const [folders,setFolders] = useState<any>({})
 
-const defaultCamera = {
-x:0,
-y:20,
-z:120
+const interactionMap = useRef<Record<string, { value:number, lastUpdate:number }>>({})
+const memoryMap = useRef<Record<string, number>>({})
+
+const GLOW_DURATION = 300000
+
+useEffect(()=>{
+const saved = localStorage.getItem("galaxy-memory")
+if(saved){
+memoryMap.current = JSON.parse(saved)
 }
+},[])
+
+useEffect(()=>{
+const interval = setInterval(()=>{
+localStorage.setItem("galaxy-memory", JSON.stringify(memoryMap.current))
+},2000)
+return ()=>clearInterval(interval)
+},[])
 
 /* textures */
 
@@ -48,17 +61,13 @@ useEffect(()=>{
 async function loadRepos(){
 
 try{
-
 const res = await fetch("/api/repos")
-
 if(!res.ok) return
 
 const text = await res.text()
-
 if(!text) return
 
 const data = JSON.parse(text)
-
 if(!Array.isArray(data)) return
 
 const planets=data.slice(0,10).map((repo:any,i:number)=>({
@@ -80,9 +89,7 @@ z:0
 setRepos(planets)
 
 }catch(err){
-
 console.error("repo fetch error",err)
-
 }
 
 }
@@ -91,20 +98,16 @@ loadRepos()
 
 },[])
 
-/* fetch folders */
+/* folders */
 
 useEffect(()=>{
 
 repos.forEach(async repo=>{
-
 try{
-
 const res = await fetch(`/api/folders?repo=${repo.name}`)
-
 if(!res.ok) return
 
 const text = await res.text()
-
 if(!text) return
 
 const data = JSON.parse(text)
@@ -113,53 +116,105 @@ setFolders(prev=>({
 ...prev,
 [repo.name]:Array.isArray(data)?data.slice(0,5):[]
 }))
-
 }catch(err){
-
-console.log("folder fetch error",err)
-
+console.log(err)
 }
-
 })
 
 },[repos])
 
-/* planet animation */
+/* 🌌 PLANET SYSTEM */
 
-useFrame((state,delta)=>{
+useFrame(()=>{
 
 if(!groupRef.current) return
+
+const now = Date.now()
 
 groupRef.current.children.forEach((planet:any,i:number)=>{
 
 const repo=repos[i]
 if(!repo) return
 
-repo.angle+=delta*0.2
+/* 🧠 INTERACTION */
+const data = interactionMap.current[repo.name]
 
-repo.x=Math.cos(repo.angle)*repo.orbit
-repo.z=Math.sin(repo.angle)*repo.orbit
+let interaction = 0
 
-planet.position.x=repo.x
-planet.position.z=repo.z
+if(data){
+const elapsed = now - data.lastUpdate
+if(elapsed < GLOW_DURATION){
+interaction = data.value * (1 - elapsed / GLOW_DURATION)
+}
+}
 
-planet.rotation.y+=delta*0.8
+/* 🧠 MEMORY (CLAMPED) */
+memoryMap.current[repo.name] =
+Math.min(
+  (memoryMap.current[repo.name] || 0) + interaction * 0.005,
+  5 // 🔥 HARD LIMIT
+)
+
+const memory = memoryMap.current[repo.name] || 0
+
+/* 🌌 ORBIT (CLAMPED SPEED) */
+const orbitSpeed = Math.min(0.01 + memory * 0.002, 0.03)
+
+repo.angle += orbitSpeed
+
+repo.x = Math.cos(repo.angle) * repo.orbit
+repo.z = Math.sin(repo.angle) * repo.orbit
+
+planet.position.x = repo.x
+planet.position.z = repo.z
+
+/* 🔥 ROTATION (CLAMPED) */
+const rotationSpeed = Math.min(0.01 + memory * 0.02, 0.08)
+
+planet.rotation.y += rotationSpeed
+
+/* ✨ SCALE */
+const scale = 1 + memory * 0.05
+planet.scale.set(scale, scale, scale)
+
+/* 💡 MATERIAL */
+const mesh = planet.children[1]
+
+if(mesh && mesh.material){
+mesh.material.emissiveIntensity = interaction * 3
+mesh.material.transparent = true
+mesh.material.opacity = 0.4 + Math.min(memory * 0.2, 0.6)
+}
 
 })
 
 })
 
-/* camera focus */
+/* 🎬 CAMERA FOLLOW */
 
 useFrame(()=>{
 
-if(!selected) return
+if(!selected || !groupRef.current) return
 
-camera.position.x += (selected.x*1.5 - camera.position.x)*0.05
-camera.position.y += (15 - camera.position.y)*0.05
-camera.position.z += (selected.z*1.5 - camera.position.z)*0.05
+let targetPlanet = null
 
-camera.lookAt(selected.x,0,selected.z)
+groupRef.current.children.forEach((planet:any,i:number)=>{
+const repo = repos[i]
+if(repo?.name === selected.name){
+targetPlanet = planet
+}
+})
+
+if(!targetPlanet) return
+
+const pos = targetPlanet.position
+
+camera.position.lerp(
+new THREE.Vector3(pos.x * 1.5, 15, pos.z * 1.5),
+0.08
+)
+
+camera.lookAt(pos.x, pos.y, pos.z)
 
 })
 
@@ -171,25 +226,34 @@ return(
 
 <group key={i}>
 
-{/* orbit path */}
-
 <mesh rotation={[-Math.PI/2,0,0]}>
-
 <ringGeometry args={[repo.orbit-0.1,repo.orbit+0.1,256]}/>
-
-<meshBasicMaterial
-color="#444"
-transparent
-opacity={0.25}
-/>
-
+<meshBasicMaterial color="#444" transparent opacity={0.25}/>
 </mesh>
-
-{/* planet */}
 
 <mesh
 rotation={[repo.tilt,0,0]}
-onClick={()=>setSelected(repo)}
+
+onPointerOver={()=>{
+interactionMap.current[repo.name] = {
+value:1,
+lastUpdate:Date.now()
+}
+}}
+
+onClick={(e)=>{
+e.stopPropagation()
+
+interactionMap.current[repo.name] = {
+value:2,
+lastUpdate:Date.now()
+}
+
+setSelected({
+...repo,
+position:e.object.position.clone(),
+})
+}}
 >
 
 <sphereGeometry args={[2.4,64,64]}/>
@@ -198,64 +262,29 @@ onClick={()=>setSelected(repo)}
 map={repo.texture}
 roughness={0.9}
 metalness={0}
-emissive="#050505"
+emissive="#ffaa00"
 />
-
-{/* atmosphere */}
 
 <mesh scale={1.05}>
-
 <sphereGeometry args={[2.4,64,64]}/>
-
-<meshBasicMaterial
-color="#4da6ff"
-transparent
-opacity={0.15}
-/>
-
+<meshBasicMaterial color="#4da6ff" transparent opacity={0.15}/>
 </mesh>
 
-{/* repo label */}
-
 <Html distanceFactor={35}>
-
-<div style={{
-color:"white",
-fontSize:"12px",
-whiteSpace:"nowrap"
-}}>
+<div style={{color:"white",fontSize:"12px"}}>
 {repo.name}
 </div>
-
 </Html>
 
 </mesh>
 
-{/* moons */}
-
-{folders[repo.name] && (
-
-<RepoMoons folders={folders[repo.name]}/>
-
-)}
-
-{/* rings */}
+{folders[repo.name] && <RepoMoons folders={folders[repo.name]}/>}
 
 {repo.stars>10 &&(
-
 <mesh rotation={[Math.PI/2,0,0]}>
-
 <ringGeometry args={[3.2,4.6,256]}/>
-
-<meshStandardMaterial
-color="#d8d8ff"
-transparent
-opacity={0.5}
-roughness={1}
-/>
-
+<meshStandardMaterial color="#d8d8ff" transparent opacity={0.5}/>
 </mesh>
-
 )}
 
 </group>
@@ -268,5 +297,4 @@ roughness={1}
 </group>
 
 )
-
 }

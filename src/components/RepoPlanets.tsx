@@ -5,45 +5,29 @@ import { useFrame,useThree } from "@react-three/fiber"
 import { Html,useTexture } from "@react-three/drei"
 import * as THREE from "three"
 
-import RepoMoons from "./RepoMoons"
-import RepoConnections from "./RepoConnections"
-import RepoDataStreams from "./RepoDataStreams"
-
-export default function RepoPlanets({selected,setSelected}:any){
+export default function RepoPlanets({
+selected,
+setSelected,
+githubUser,
+onReposLoaded
+}:any){
 
 const groupRef = useRef<any>()
 const { camera } = useThree()
 
 const [repos,setRepos] = useState<any[]>([])
-const [folders,setFolders] = useState<any>({})
 
-const interactionMap = useRef<Record<string, { value:number, lastUpdate:number }>>({})
-const memoryMap = useRef<Record<string, number>>({})
-
-const GLOW_DURATION = 300000
-
-useEffect(()=>{
-const saved = localStorage.getItem("galaxy-memory")
-if(saved){
-memoryMap.current = JSON.parse(saved)
-}
-},[])
-
-useEffect(()=>{
-const interval = setInterval(()=>{
-localStorage.setItem("galaxy-memory", JSON.stringify(memoryMap.current))
-},2000)
-return ()=>clearInterval(interval)
-},[])
+/* 🔥 NEW: track last loaded user */
+const lastUserRef = useRef<string | null>(null)
 
 /* textures */
-
 const textures = useTexture({
 earth:"/textures/planets/earth.jpg",
 moon:"/textures/planets/moon.jpg",
 mars:"/textures/planets/mars.jpg",
 jupiter:"/textures/planets/jupiter.jpg",
-lava:"/textures/planets/lava.jpg"
+lava:"/textures/planets/lava.jpg",
+uranus:"/textures/planets/uranus.jpg"
 })
 
 const textureList=[
@@ -51,35 +35,57 @@ textures.earth,
 textures.moon,
 textures.mars,
 textures.jupiter,
-textures.lava
+textures.lava,
+textures.uranus
 ]
 
-/* fetch repos */
+/* 🔥 FETCH REPOS */
 
 useEffect(()=>{
 
 async function loadRepos(){
 
+if(!githubUser){
+console.log("❌ No githubUser")
+return
+}
+
+/* 🔥 NEW: prevent duplicate fetch */
+if(lastUserRef.current === githubUser) return
+lastUserRef.current = githubUser
+
+console.log("🚀 Fetching repos for:", githubUser)
+
+/* 🔥 NEW: reset old planets */
+setRepos([])
+
 try{
-const res = await fetch("/api/repos")
-if(!res.ok) return
 
-const text = await res.text()
-if(!text) return
+const res = await fetch(`/api/repos?user=${githubUser}`)
 
-const data = JSON.parse(text)
-if(!Array.isArray(data)) return
+if(!res.ok){
+console.log("❌ API failed")
+return
+}
+
+const data = await res.json()
+
+console.log("✅ Repo count:", data.length)
+
+if(!Array.isArray(data) || data.length === 0){
+console.log("⚠️ No repos found")
+setRepos([])
+return
+}
 
 const planets=data.slice(0,10).map((repo:any,i:number)=>({
 
-name:repo.name,
-stars:repo.stargazers_count || 0,
-language:repo.language,
-owner:repo.owner.login,
+name: repo.name + "-" + githubUser,
+displayName: repo.name,
 
+stars: repo.stargazers_count || 0,
 orbit:35+i*14,
 angle:Math.random()*Math.PI*2,
-tilt:(Math.random()*0.4)-0.2,
 texture:textureList[i%textureList.length],
 x:0,
 z:0
@@ -87,6 +93,7 @@ z:0
 }))
 
 setRepos(planets)
+onReposLoaded?.(planets)
 
 }catch(err){
 console.error("repo fetch error",err)
@@ -96,95 +103,28 @@ console.error("repo fetch error",err)
 
 loadRepos()
 
-},[])
+},[githubUser])
 
-/* folders */
-
-useEffect(()=>{
-
-repos.forEach(async repo=>{
-try{
-const res = await fetch(`/api/folders?repo=${repo.name}`)
-if(!res.ok) return
-
-const text = await res.text()
-if(!text) return
-
-const data = JSON.parse(text)
-
-setFolders(prev=>({
-...prev,
-[repo.name]:Array.isArray(data)?data.slice(0,5):[]
-}))
-}catch(err){
-console.log(err)
-}
-})
-
-},[repos])
-
-/* 🌌 PLANET SYSTEM */
+/* 🌌 ANIMATION */
 
 useFrame(()=>{
 
 if(!groupRef.current) return
-
-const now = Date.now()
 
 groupRef.current.children.forEach((planet:any,i:number)=>{
 
 const repo=repos[i]
 if(!repo) return
 
-/* 🧠 INTERACTION */
-const data = interactionMap.current[repo.name]
+repo.angle += 0.01
 
-let interaction = 0
-
-if(data){
-const elapsed = now - data.lastUpdate
-if(elapsed < GLOW_DURATION){
-interaction = data.value * (1 - elapsed / GLOW_DURATION)
-}
-}
-
-/* 🧠 MEMORY (CLAMPED) */
-memoryMap.current[repo.name] =
-Math.min(
-  (memoryMap.current[repo.name] || 0) + interaction * 0.005,
-  5 // 🔥 HARD LIMIT
-)
-
-const memory = memoryMap.current[repo.name] || 0
-
-/* 🌌 ORBIT (CLAMPED SPEED) */
-const orbitSpeed = Math.min(0.01 + memory * 0.002, 0.03)
-
-repo.angle += orbitSpeed
-
-repo.x = Math.cos(repo.angle) * repo.orbit
-repo.z = Math.sin(repo.angle) * repo.orbit
+repo.x = Math.cos(repo.angle)*repo.orbit
+repo.z = Math.sin(repo.angle)*repo.orbit
 
 planet.position.x = repo.x
 planet.position.z = repo.z
 
-/* 🔥 ROTATION (CLAMPED) */
-const rotationSpeed = Math.min(0.01 + memory * 0.02, 0.08)
-
-planet.rotation.y += rotationSpeed
-
-/* ✨ SCALE */
-const scale = 1 + memory * 0.05
-planet.scale.set(scale, scale, scale)
-
-/* 💡 MATERIAL */
-const mesh = planet.children[1]
-
-if(mesh && mesh.material){
-mesh.material.emissiveIntensity = interaction * 3
-mesh.material.transparent = true
-mesh.material.opacity = 0.4 + Math.min(memory * 0.2, 0.6)
-}
+planet.rotation.y += 0.01
 
 })
 
@@ -199,8 +139,7 @@ if(!selected || !groupRef.current) return
 let targetPlanet = null
 
 groupRef.current.children.forEach((planet:any,i:number)=>{
-const repo = repos[i]
-if(repo?.name === selected.name){
+if(repos[i]?.name === selected.name){
 targetPlanet = planet
 }
 })
@@ -210,11 +149,11 @@ if(!targetPlanet) return
 const pos = targetPlanet.position
 
 camera.position.lerp(
-new THREE.Vector3(pos.x * 1.5, 15, pos.z * 1.5),
+new THREE.Vector3(pos.x*1.5,15,pos.z*1.5),
 0.08
 )
 
-camera.lookAt(pos.x, pos.y, pos.z)
+camera.lookAt(pos.x,pos.y,pos.z)
 
 })
 
@@ -224,75 +163,26 @@ return(
 
 {repos.map((repo,i)=>(
 
-<group key={i}>
-
-<mesh rotation={[-Math.PI/2,0,0]}>
-<ringGeometry args={[repo.orbit-0.1,repo.orbit+0.1,256]}/>
-<meshBasicMaterial color="#444" transparent opacity={0.25}/>
-</mesh>
-
 <mesh
-rotation={[repo.tilt,0,0]}
-
-onPointerOver={()=>{
-interactionMap.current[repo.name] = {
-value:1,
-lastUpdate:Date.now()
-}
-}}
-
+key={repo.name}
 onClick={(e)=>{
 e.stopPropagation()
-
-interactionMap.current[repo.name] = {
-value:2,
-lastUpdate:Date.now()
-}
-
-setSelected({
-...repo,
-position:e.object.position.clone(),
-})
+setSelected({...repo,position:e.object.position.clone()})
 }}
 >
 
 <sphereGeometry args={[2.4,64,64]}/>
-
-<meshStandardMaterial
-map={repo.texture}
-roughness={0.9}
-metalness={0}
-emissive="#ffaa00"
-/>
-
-<mesh scale={1.05}>
-<sphereGeometry args={[2.4,64,64]}/>
-<meshBasicMaterial color="#4da6ff" transparent opacity={0.15}/>
-</mesh>
+<meshStandardMaterial map={repo.texture} />
 
 <Html distanceFactor={35}>
 <div style={{color:"white",fontSize:"12px"}}>
-{repo.name}
+{repo.displayName}
 </div>
 </Html>
 
 </mesh>
 
-{folders[repo.name] && <RepoMoons folders={folders[repo.name]}/>}
-
-{repo.stars>10 &&(
-<mesh rotation={[Math.PI/2,0,0]}>
-<ringGeometry args={[3.2,4.6,256]}/>
-<meshStandardMaterial color="#d8d8ff" transparent opacity={0.5}/>
-</mesh>
-)}
-
-</group>
-
 ))}
-
-<RepoConnections repos={repos}/>
-<RepoDataStreams repos={repos}/>
 
 </group>
 

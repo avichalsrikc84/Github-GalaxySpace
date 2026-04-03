@@ -1,28 +1,34 @@
-export async function GET(req:Request){
+import { NextResponse } from "next/server"
+
+export async function GET(req: Request) {
 
 const { searchParams } = new URL(req.url)
-
 const repo = searchParams.get("repo")
+const owner = process.env.GITHUB_USERNAME
 
-const username = process.env.GITHUB_USERNAME
-const token = process.env.GITHUB_TOKEN
+if (!repo || !owner) {
+  return NextResponse.json([])
+}
+
+try {
 
 const res = await fetch(
-`https://api.github.com/repos/${username}/${repo}/contents`,
-{
-headers:{
-Authorization:`Bearer ${token}`,
-Accept:"application/vnd.github+json"
-}
-}
+  `https://api.github.com/repos/${owner}/${repo}/contents`,
+  {
+    headers: {
+      Authorization: `Bearer ${process.env.GITHUB_TOKEN}`,
+    },
+  }
 )
 
 const data = await res.json()
 
-const folders = Array.isArray(data)
-? data.filter((item:any)=>item.type==="dir")
-: []
+const folders = data.filter((item: any) => item.type === "dir")
 
-return Response.json(folders)
+return NextResponse.json(folders)
+
+} catch (err) {
+return NextResponse.json([])
+}
 
 }

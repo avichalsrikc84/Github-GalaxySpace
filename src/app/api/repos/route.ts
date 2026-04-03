@@ -1,24 +1,39 @@
-export async function GET(){
+import { NextResponse } from "next/server"
 
-const username = process.env.GITHUB_USERNAME
-const token = process.env.GITHUB_TOKEN
+export async function GET(req: Request) {
 
-const res = await fetch(
-`https://api.github.com/users/${username}/repos`,
-{
-headers:{
-Authorization:`Bearer ${token}`,
-Accept:"application/vnd.github+json"
-}
-}
-)
+  const { searchParams } = new URL(req.url)
+  const user = searchParams.get("user")
 
-const data = await res.json()
+  if (!user) return NextResponse.json([])
 
-if(!Array.isArray(data)){
-return Response.json([])
-}
+  try {
 
-return Response.json(data)
+    const res = await fetch(
+      `https://api.github.com/users/${user}/repos?per_page=50`,
+      {
+        headers: {
+          Accept: "application/vnd.github+json",
+          Authorization: `Bearer ${process.env.GITHUB_TOKEN}`, // ✅ FIXED
+        },
+        cache: "no-store",
+      }
+    )
 
+    if (!res.ok) {
+      const text = await res.text()
+      console.log("❌ GitHub API failed:", res.status, text)
+      return NextResponse.json([])
+    }
+
+    const data = await res.json()
+
+    console.log("✅ Repo count:", data.length)
+
+    return NextResponse.json(Array.isArray(data) ? data : [])
+
+  } catch (err) {
+    console.log("❌ Fetch error:", err)
+    return NextResponse.json([])
+  }
 }

@@ -4,9 +4,12 @@ import { useMemo, useRef } from "react"
 import { useFrame } from "@react-three/fiber"
 import * as THREE from "three"
 
-export default function GalaxyDisk(){
+export default function GalaxyDisk({ color = "#8844ff" }: any){
 
 const pointsRef = useRef<any>()
+
+/* 🔥 convert user color */
+const baseColor = new THREE.Color(color)
 
 const {positions,colors,radii,angles} = useMemo(()=>{
 
@@ -36,38 +39,42 @@ pos[i*3+2] = Math.sin(angle)*r
 rads.push(r)
 angs.push(angle)
 
-/* GALAXY ARM COLOR GRADIENT */
-
-let color
+/* 🌈 MIX USER COLOR WITH GRADIENT */
 
 const ratio = r / radius
 
+let gradientColor
+
 if(ratio > 0.75){
-color = new THREE.Color("#6fa8ff")   // blue outer stars
+gradientColor = new THREE.Color("#6fa8ff")
 }
 else if(ratio > 0.5){
-color = new THREE.Color("#ffffff")   // white mid arms
+gradientColor = new THREE.Color("#ffffff")
 }
 else if(ratio > 0.25){
-color = new THREE.Color("#ffe4a1")   // yellow inner stars
+gradientColor = new THREE.Color("#ffe4a1")
 }
 else{
-color = new THREE.Color("#ffb07c")   // warm core stars
+gradientColor = new THREE.Color("#ffb07c")
 }
 
-col[i*3] = color.r
-col[i*3+1] = color.g
-col[i*3+2] = color.b
+/* 🔥 blend with user color */
+gradientColor.lerp(baseColor, 0.4)
+
+col[i*3] = gradientColor.r
+col[i*3+1] = gradientColor.g
+col[i*3+2] = gradientColor.b
 
 }
 
 return {positions:pos,colors:col,radii:rads,angles:angs}
 
-},[])
+},[color]) // 🔥 IMPORTANT
 
 useFrame((state,delta)=>{
 
-const pos = pointsRef.current.geometry.attributes.position.array
+const geo = pointsRef.current.geometry
+const pos = geo.attributes.position.array
 
 for(let i=0;i<radii.length;i++){
 
@@ -78,7 +85,7 @@ pos[i*3+2]=Math.sin(angles[i])*radii[i]
 
 }
 
-pointsRef.current.geometry.attributes.position.needsUpdate = true
+geo.attributes.position.needsUpdate = true
 
 })
 
@@ -106,7 +113,7 @@ itemSize={3}
 
 <pointsMaterial
 vertexColors
-size={0.12}
+size={0.14} // 🔥 slightly improved
 sizeAttenuation
 depthWrite={false}
 />

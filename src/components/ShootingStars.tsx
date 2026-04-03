@@ -19,7 +19,7 @@ export default function ShootingStars({ count = 20 }) {
 
   const trailSteps = 4;
 
-  const stars = useMemo<Star[]>((() => {
+  const stars = useMemo<Star[]>(() => {
     return Array.from({ length: count }).map(() => ({
       position: new THREE.Vector3(),
       velocity: new THREE.Vector3(),
@@ -27,7 +27,7 @@ export default function ShootingStars({ count = 20 }) {
       active: false,
       isLegendary: false,
     }));
-  }), [count]);
+  }, [count]);
 
   const dummy = useMemo(() => new THREE.Object3D(), []);
 
@@ -36,7 +36,7 @@ export default function ShootingStars({ count = 20 }) {
 
     spawnTimer.current -= delta;
 
-    // 🌠 RANDOM BURST SPAWN
+    /* 🌠 SPAWN */
     if (spawnTimer.current <= 0) {
       spawnTimer.current = Math.random() * 2 + 1;
 
@@ -53,25 +53,21 @@ export default function ShootingStars({ count = 20 }) {
           (Math.random() - 0.5) * 200
         );
 
-        if (isLegendary) {
-          star.velocity.set(-20, -5, -2);
-          star.life = 2;
-        } else {
-          star.velocity.set(
-            -Math.random() * 6 - 6,
-            -Math.random() * 2,
-            -Math.random() * 1
-          );
-          star.life = Math.random() * 1.2 + 0.5;
-        }
+        star.velocity.set(
+          -Math.random() * 8 - 6,
+          -Math.random() * 2,
+          -Math.random() * 2
+        );
+
+        star.life = isLegendary ? 2 : Math.random() * 1.2 + 0.5;
 
         star.active = true;
         star.isLegendary = isLegendary;
 
-        // 💥 FLASH BURST
+        /* 💥 FLASH */
         if (flashRef.current) {
           flashRef.current.position.copy(star.position);
-          flashRef.current.intensity = isLegendary ? 20 : 10;
+          flashRef.current.intensity = isLegendary ? 15 : 8;
         }
       }
     }
@@ -90,82 +86,65 @@ export default function ShootingStars({ count = 20 }) {
       }
 
       const speed = star.velocity.length();
-      const sizeMultiplier = star.isLegendary ? 2.5 : 1;
+      const sizeMultiplier = star.isLegendary ? 2 : 1;
 
-      // 🌫 MOTION BLUR TRAIL
+      /* 🌫 TRAIL */
       for (let t = 0; t < trailSteps; t++) {
-        const trailOffset = t * 0.5;
+        const fade = 1 - t / trailSteps;
 
         const trailPos = star.position.clone().add(
-          star.velocity.clone().multiplyScalar(-trailOffset)
+          star.velocity.clone().multiplyScalar(-t * 0.4)
         );
 
         dummy.position.copy(trailPos);
         dummy.lookAt(trailPos.clone().add(star.velocity));
 
-        const fade = 1 - t / trailSteps;
-
         dummy.scale.set(
-          0.4 * fade * sizeMultiplier,
-          0.4 * fade * sizeMultiplier,
-          speed * 3 * fade * sizeMultiplier
+          0.3 * fade * sizeMultiplier,
+          0.3 * fade * sizeMultiplier,
+          speed * 2 * fade * sizeMultiplier
         );
 
         dummy.updateMatrix();
-        meshRef.current.setMatrixAt(instanceIndex++, dummy.matrix);
+        meshRef.current!.setMatrixAt(instanceIndex++, dummy.matrix);
       }
     });
 
+    /* 💀 CRITICAL FIX: CLEAR OLD INSTANCES */
+    meshRef.current.count = instanceIndex;
+
     meshRef.current.instanceMatrix.needsUpdate = true;
 
-    // 💥 Fade flash light
+    /* 💥 FLASH FADE */
     if (flashRef.current) {
-      flashRef.current.intensity *= 0.9;
+      flashRef.current.intensity *= 0.85;
     }
   });
 
   return (
     <>
-      {/* 🌠 INSTANCED COMETS */}
+      {/* 🌠 INSTANCED STARS */}
       <instancedMesh
         ref={meshRef}
         args={[undefined, undefined, count * trailSteps]}
       >
-        <coneGeometry args={[0.25, 2, 8, 1, true]} />
+        {/* 🔥 FIX: better geometry (no flat plate) */}
+        <cylinderGeometry args={[0.1, 0.2, 2, 6]} />
 
-        <shaderMaterial
+        <meshBasicMaterial
+          color="#ffcc88"
           transparent
+          opacity={0.9}
           depthWrite={false}
-          blending={THREE.AdditiveBlending}
-          uniforms={{
-            uColor: { value: new THREE.Color("#ffffff") },
-          }}
-          vertexShader={`
-            varying float vZ;
-            void main() {
-              vZ = position.z;
-              gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-            }
-          `}
-          fragmentShader={`
-            uniform vec3 uColor;
-            varying float vZ;
-
-            void main() {
-              float alpha = smoothstep(-1.0, 1.0, vZ);
-              alpha = pow(alpha, 2.0);
-              gl_FragColor = vec4(uColor, alpha);
-            }
-          `}
         />
       </instancedMesh>
 
-      {/* 💥 FLASH LIGHT */}
+      {/* 💥 FLASH */}
       <pointLight
         ref={flashRef}
-        color="white"
+        color="#ffffff"
         intensity={0}
-        distance={60}
+        distance={80}
       />
     </>
   );

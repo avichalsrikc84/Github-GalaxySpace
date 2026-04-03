@@ -3,14 +3,17 @@
 import { useMemo } from "react"
 import { Points, PointMaterial } from "@react-three/drei"
 import { createNoise3D } from "simplex-noise"
+import * as THREE from "three"
 
-export default function Nebula(){
+export default function Nebula({ color = "#ff6633" }: any){
+
+const baseColor = new THREE.Color(color)
 
 const positions = useMemo(()=>{
 
 const noise3D = createNoise3D()
 
-const count = 12000
+const count = 14000
 const radius = 160
 
 const arr = new Float32Array(count*3)
@@ -26,7 +29,7 @@ const y = (Math.random()-0.5)*30
 
 const n = noise3D(x*0.02,y*0.02,z*0.02)
 
-if(n > 0){
+if(n > -0.1){ // 🔥 more density
 
 arr[i*3] = x
 arr[i*3+1] = y
@@ -46,9 +49,9 @@ return(
 
 <PointMaterial
 transparent
-color="#ff6633"
-size={0.5}
-opacity={0.008}
+color={baseColor}
+size={0.6}        // 🔥 slightly bigger
+opacity={0.012}   // 🔥 more visible
 depthWrite={false}
 />
 

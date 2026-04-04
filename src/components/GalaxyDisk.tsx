@@ -4,122 +4,147 @@ import { useMemo, useRef } from "react"
 import { useFrame } from "@react-three/fiber"
 import * as THREE from "three"
 
-export default function GalaxyDisk({ color = "#8844ff" }: any){
+export default function GalaxyDisk({ color = "#8844ff" }: any) {
 
-const pointsRef = useRef<any>()
+  const pointsRef = useRef<any>()
 
-/* 🔥 convert user color */
-const baseColor = new THREE.Color(color)
+  const baseColor = new THREE.Color(color)
 
-const {positions,colors,radii,angles} = useMemo(()=>{
+  const { positions, colors, radii, angles } = useMemo(() => {
 
-const count = 20000
-const arms = 5
-const radius = 90
+    const count = 30000 // 🔥 more density
+    const branches = 5
+    const maxRadius = 100
 
-const pos = new Float32Array(count*3)
-const col = new Float32Array(count*3)
+    const pos = new Float32Array(count * 3)
+    const col = new Float32Array(count * 3)
 
-const rads:number[] = []
-const angs:number[] = []
+    const rads: number[] = []
+    const angs: number[] = []
 
-for(let i=0;i<count;i++){
+    const innerColor = new THREE.Color("#ffae00") // core
+    const midColor = new THREE.Color("#ffffff")
+    const outerColor = new THREE.Color("#4dabf7") // arms
 
-const r = Math.pow(Math.random(),2.5)*radius
-const armIndex = i % arms
-const armAngle = (armIndex/arms)*Math.PI*2
+    for (let i = 0; i < count; i++) {
 
-const spin = r*0.45
-const angle = armAngle + spin
+      const radius = Math.pow(Math.random(), 2.2) * maxRadius
 
-pos[i*3] = Math.cos(angle)*r
-pos[i*3+1] = (Math.random()-0.5)*3
-pos[i*3+2] = Math.sin(angle)*r
+      // 🌌 Spiral logic
+      let branchAngle =
+        ((i % branches) / branches) * Math.PI * 2
 
-rads.push(r)
-angs.push(angle)
+      const spinAngle = radius * 0.6
 
-/* 🌈 MIX USER COLOR WITH GRADIENT */
+      // 🔥 break symmetry
+      branchAngle += (Math.random() - 0.5) * 0.25
 
-const ratio = r / radius
+      // 🔥 randomness (important)
+      const randomX =
+        Math.pow(Math.random(), 3) *
+        (Math.random() < 0.5 ? 1 : -1) *
+        0.4 *
+        radius
 
-let gradientColor
+      const randomZ =
+        Math.pow(Math.random(), 3) *
+        (Math.random() < 0.5 ? 1 : -1) *
+        0.4 *
+        radius
 
-if(ratio > 0.75){
-gradientColor = new THREE.Color("#6fa8ff")
-}
-else if(ratio > 0.5){
-gradientColor = new THREE.Color("#ffffff")
-}
-else if(ratio > 0.25){
-gradientColor = new THREE.Color("#ffe4a1")
-}
-else{
-gradientColor = new THREE.Color("#ffb07c")
-}
+      // 📍 positions
+      const x = Math.cos(branchAngle + spinAngle) * radius + randomX
+      const z = Math.sin(branchAngle + spinAngle) * radius + randomZ
 
-/* 🔥 blend with user color */
-gradientColor.lerp(baseColor, 0.4)
+      // 🔥 depth (more near outer)
+      const y =
+        (Math.random() - 0.5) *
+        (radius * 0.04)
 
-col[i*3] = gradientColor.r
-col[i*3+1] = gradientColor.g
-col[i*3+2] = gradientColor.b
+      pos[i * 3] = x
+      pos[i * 3 + 1] = y
+      pos[i * 3 + 2] = z
 
-}
+      rads.push(radius)
+      angs.push(branchAngle + spinAngle)
 
-return {positions:pos,colors:col,radii:rads,angles:angs}
+      // 🌈 smooth gradient
+      let mixedColor
 
-},[color]) // 🔥 IMPORTANT
+      const t = radius / maxRadius
 
-useFrame((state,delta)=>{
+      if (t < 0.3) {
+        mixedColor = innerColor.clone().lerp(midColor, t / 0.3)
+      } else {
+        mixedColor = midColor.clone().lerp(outerColor, (t - 0.3) / 0.7)
+      }
 
-const geo = pointsRef.current.geometry
-const pos = geo.attributes.position.array
+      // 🔥 blend with user color
+      mixedColor.lerp(baseColor, 0.25)
 
-for(let i=0;i<radii.length;i++){
+      col[i * 3] = mixedColor.r
+      col[i * 3 + 1] = mixedColor.g
+      col[i * 3 + 2] = mixedColor.b
+    }
 
-angles[i]+=delta*(0.4/Math.sqrt(radii[i]+1))
+    return { positions: pos, colors: col, radii: rads, angles: angs }
 
-pos[i*3]=Math.cos(angles[i])*radii[i]
-pos[i*3+2]=Math.sin(angles[i])*radii[i]
+  }, [color])
 
-}
+  useFrame((state, delta) => {
 
-geo.attributes.position.needsUpdate = true
+    const geo = pointsRef.current.geometry
+    const pos = geo.attributes.position.array
 
-})
+    for (let i = 0; i < radii.length; i++) {
 
-return(
+      // 🌠 natural rotation (slower outside)
+      angles[i] += delta * (0.3 / Math.sqrt(radii[i] + 1))
 
-<points ref={pointsRef}>
+      pos[i * 3] = Math.cos(angles[i]) * radii[i]
+      pos[i * 3 + 2] = Math.sin(angles[i]) * radii[i]
+    }
 
-<bufferGeometry>
+    geo.attributes.position.needsUpdate = true
+  })
 
-<bufferAttribute
-attach="attributes-position"
-array={positions}
-count={positions.length/3}
-itemSize={3}
-/>
+  return (
+    <>
+      {/* 🔥 CORE GLOW */}
+      <mesh position={[0, 0, 0]}>
+        <sphereGeometry args={[4, 32, 32]} />
+        <meshBasicMaterial color="#ff6a00" />
+      </mesh>
 
-<bufferAttribute
-attach="attributes-color"
-array={colors}
-count={colors.length/3}
-itemSize={3}
-/>
+      {/* 🌌 GALAXY POINTS */}
+      <points ref={pointsRef}>
+        <bufferGeometry>
 
-</bufferGeometry>
+          <bufferAttribute
+            attach="attributes-position"
+            array={positions}
+            count={positions.length / 3}
+            itemSize={3}
+          />
 
-<pointsMaterial
-vertexColors
-size={0.14} // 🔥 slightly improved
-sizeAttenuation
-depthWrite={false}
-/>
+          <bufferAttribute
+            attach="attributes-color"
+            array={colors}
+            count={colors.length / 3}
+            itemSize={3}
+          />
 
-</points>
+        </bufferGeometry>
 
-)
+        <pointsMaterial
+          vertexColors
+          size={0.12}
+          sizeAttenuation
+          depthWrite={false}
+          blending={THREE.AdditiveBlending} // 🔥 HUGE VISUAL BOOST
+        />
 
+      </points>
+    </>
+  )
 }

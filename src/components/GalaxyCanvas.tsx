@@ -19,14 +19,13 @@ import SpaceDust from "./SpaceDust"
 import RepoPlanets from "./RepoPlanets"
 import ExitFocusButton from "./ExitFocusButton"
 import RepoInfoPanel from "./RepoInfoPanel"
-import ShootingStars from "./ShootingStars"
 import CinematicCamera from "./CinematicCamera"
 import StoryModeController from "./StoryModeController"
 
 import Spaceship from "./Spaceship"
 import WarpTransition from "./WarpTransition"
 import useWarpSound from "./useWarpSound"
-import SpaceEffects from "./SpaceEffects"
+import FloatingObjects from "./FloatingObjects";
 
 export default function GalaxyCanvas(){
 
@@ -271,9 +270,6 @@ Logout
 
 <Nebula color={activeGalaxy?.color}/>
 <StarField/>
-<SpaceEffects/>
-
-<ShootingStars count={25}/>
 
 <Spaceship active={travelPhase!=="idle"} phase={travelPhase} viewMode={viewMode}/>
 
@@ -284,7 +280,7 @@ Logout
 <GalaxyDisk color={activeGalaxy?.color}/>
 <DustLanes/>
 <LensingField/>
-
+<FloatingObjects />
 {activeUser && (
 <RepoPlanets
 selected={selected}
@@ -314,7 +310,11 @@ return g
 )}
 
 <EffectComposer>
-<Bloom intensity={4}/>
+<Bloom
+    intensity={1.5}
+    luminanceThreshold={0}
+    luminanceSmoothing={0.9}
+  />
 </EffectComposer>
 
 <OrbitControls ref={controlsRef} enabled={travelPhase==="idle"} maxDistance={180} minDistance={30} enableDamping/>

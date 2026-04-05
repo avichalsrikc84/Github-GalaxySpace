@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useMemo, useState } from "react";
+import { useRef, useMemo, useState, useEffect } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import { useGLTF } from "@react-three/drei";
 import * as THREE from "three";
@@ -13,14 +13,31 @@ type Obj = {
   type: "astronaut" | "satellite";
 };
 
+function normalizeModel(scene: THREE.Object3D, scale = 1) {
+  const box = new THREE.Box3().setFromObject(scene);
+  const size = new THREE.Vector3();
+  box.getSize(size);
+
+  const maxDim = Math.max(size.x, size.y, size.z);
+  const s = scale / maxDim;
+
+  scene.scale.setScalar(s);
+
+  const center = new THREE.Vector3();
+  box.getCenter(center);
+  scene.position.sub(center);
+
+  return scene;
+}
+
 export default function FloatingObjects({ maxObjects = 3 }) {
   const groupRef = useRef<any>();
   const spawnTimer = useRef(0);
 
-  const { mouse, camera } = useThree();
+  const { camera } = useThree();
 
-  const astronaut = useGLTF("/models/astronaut.glb");
-  const satellite = useGLTF("/models/satellite.glb");
+  const astronautGLTF = useGLTF("/models/astronaut.glb");
+  const satelliteGLTF = useGLTF("/models/satellite.glb");
 
   const [draggingIndex, setDraggingIndex] = useState<number | null>(null);
 
@@ -34,54 +51,34 @@ export default function FloatingObjects({ maxObjects = 3 }) {
     }));
   }, [maxObjects]);
 
-  const target = new THREE.Vector3();
-  const prevWorldPos = useRef(new THREE.Vector3());
-
   useFrame((_, delta) => {
     if (!groupRef.current) return;
 
-    /* 🔥 ALWAYS KEEP ONE OBJECT */
-    const activeCount = objects.filter(o => o.active).length;
-
-    if (activeCount === 0) {
-      const obj = objects[0];
-
-      obj.position.set(0, 20, -40); // 🔥 in front of camera
-      obj.velocity.set(0.05, 0.02, 0.3);
-      obj.life = 12;
-      obj.type = "astronaut";
-      obj.active = true;
-    }
-
     spawnTimer.current -= delta;
 
-    /* 🌌 SPAWN SYSTEM */
+    /* 🌌 SPAWN FROM FAR (NO POP) */
     if (spawnTimer.current <= 0) {
-      spawnTimer.current = Math.random() * 2 + 2;
+      spawnTimer.current = Math.random() * 3 + 2;
 
-      if (Math.random() < 0.8) {
-        const obj = objects.find(o => !o.active);
+      const obj = objects.find(o => !o.active);
+      if (obj) {
+        // 🔥 spawn BEHIND camera view
+        obj.position.set(
+          (Math.random() - 0.5) * 120,
+          Math.random() * 60,
+          -200 // far away
+        );
 
-        if (obj) {
-          // 🔥 spawn in front of camera cone
-          const z = -80 - Math.random() * 40;
+        // 🔥 move toward camera
+        obj.velocity.set(
+          (Math.random() - 0.5) * 0.05,
+          (Math.random() - 0.5) * 0.02,
+          0.6 + Math.random() * 0.4
+        );
 
-          obj.position.set(
-            (Math.random() - 0.5) * 80,
-            Math.random() * 40,
-            z
-          );
-
-          obj.velocity.set(
-            (Math.random() - 0.5) * 0.1,
-            (Math.random() - 0.5) * 0.05,
-            0.5 + Math.random() * 0.3
-          );
-
-          obj.life = Math.random() * 10 + 8;
-          obj.type = Math.random() > 0.5 ? "astronaut" : "satellite";
-          obj.active = true;
-        }
+        obj.life = 20;
+        obj.type = Math.random() > 0.5 ? "astronaut" : "satellite";
+        obj.active = true;
       }
     }
 
@@ -95,40 +92,19 @@ export default function FloatingObjects({ maxObjects = 3 }) {
 
       mesh.visible = true;
 
-      /* 🎯 DRAG + THROW FIXED */
-      if (draggingIndex === i) {
-        // 🔥 FIXED DEPTH (important)
-        const depth = 0.5;
-        target.set(mouse.x, mouse.y, depth);
-        target.unproject(camera);
-
-        // compute velocity from world movement
-        const velocity = new THREE.Vector3()
-          .subVectors(target, prevWorldPos.current);
-
-        obj.velocity.copy(velocity.multiplyScalar(20));
-
-        obj.position.lerp(target, 0.25);
-
-        prevWorldPos.current.copy(target);
-      } else {
-        /* 🌊 FLOAT */
-        obj.position.addScaledVector(obj.velocity, delta * 15);
-
-        // 🔥 friction (realistic slowing)
-        obj.velocity.multiplyScalar(0.97);
-      }
+      /* 🌊 FLOAT THROUGH SCENE */
+      obj.position.addScaledVector(obj.velocity, delta * 15);
 
       mesh.position.copy(obj.position);
 
-      /* 🔁 rotation */
-      mesh.rotation.x += 0.2 * delta;
-      mesh.rotation.y += 0.3 * delta;
+      /* 🔁 ROTATION */
+      mesh.rotation.x += 0.15 * delta;
+      mesh.rotation.y += 0.25 * delta;
 
       obj.life -= delta;
 
-      /* ❌ EXIT WHEN OUT OF CAMERA */
-      if (obj.life <= 0 || obj.position.z > 60) {
+      /* ❌ EXIT AFTER PASSING CAMERA */
+      if (obj.position.z > 80 || obj.life <= 0) {
         obj.active = false;
         obj.position.set(9999, 9999, 9999);
       }
@@ -138,23 +114,21 @@ export default function FloatingObjects({ maxObjects = 3 }) {
   return (
     <group ref={groupRef}>
       {objects.map((obj, i) => {
-        const model =
+        const raw =
           obj.type === "astronaut"
-            ? astronaut.scene.clone(true)
-            : satellite.scene.clone(true);
+            ? astronautGLTF.scene.clone(true)
+            : satelliteGLTF.scene.clone(true);
+
+        const model = normalizeModel(raw, obj.type === "astronaut" ? 3 : 4);
 
         return (
           <primitive
             key={i}
             object={model}
-            scale={1.2}
             visible={false}
             onPointerDown={(e) => {
               e.stopPropagation();
               setDraggingIndex(i);
-
-              // 🔥 initialize drag reference
-              prevWorldPos.current.copy(obj.position);
             }}
             onPointerUp={() => setDraggingIndex(null)}
             onPointerOut={() => setDraggingIndex(null)}

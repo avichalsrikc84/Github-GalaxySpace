@@ -1,138 +1,113 @@
 "use client"
 
-import { useRef } from "react"
+import { useRef, useMemo } from "react"
 import { useFrame, useThree } from "@react-three/fiber"
+import { useGLTF } from "@react-three/drei"
 import * as THREE from "three"
+
+/* 🔥 normalize model (fix scale + center) */
+function normalize(scene: THREE.Object3D, targetSize = 35) {
+  const box = new THREE.Box3().setFromObject(scene)
+  const size = new THREE.Vector3()
+  box.getSize(size)
+
+  const maxDim = Math.max(size.x, size.y, size.z)
+  const scale = targetSize / (maxDim || 1)
+
+  scene.scale.setScalar(scale)
+
+  const center = new THREE.Vector3()
+  box.getCenter(center)
+  scene.position.sub(center)
+
+  return scene
+}
 
 export default function Spaceship({ active, phase, viewMode }: any){
 
-const ship = useRef<any>()
-const flame = useRef<any>()
-const glow = useRef<any>()
-const { camera } = useThree()
+  const ship = useRef<any>()
+  const engineLight = useRef<any>()
 
-let time = 0
+  const { camera } = useThree()
 
-useFrame((_,delta)=>{
+  const gltf = useGLTF("/models/spaceship.glb")
 
-if(!active || !ship.current) return
+  /* 🚀 prepare model */
+  const model = useMemo(() => {
+    const cloned = gltf.scene.clone(true)
+    return normalize(cloned, 35) // 🔥 BIG HERO SIZE
+  }, [gltf])
 
-time += delta
-const pos = ship.current.position
+  let time = 0
 
-/* 🚀 APPROACH (FILMIC EASING) */
-if(phase === "approach"){
+  useFrame((_,delta)=>{
 
-const progress = THREE.MathUtils.clamp((220 - pos.z)/220,0,1)
-const eased = progress * progress * (3 - 2 * progress)
+    if(!active || !ship.current) return
 
-const speed = THREE.MathUtils.lerp(5, 16, eased)
+    time += delta
+    const pos = ship.current.position
 
-pos.z -= delta * speed
-pos.y = Math.sin(time * 1.2) * 0.3
-}
+    /* 🚀 APPROACH */
+    if(phase === "approach"){
+      pos.z -= delta * 14
+      pos.y = Math.sin(time * 1.5) * 0.4
+    }
 
-/* ⚡ HOLD (ENERGY BUILD) */
-if(phase === "hold"){
+    /* ⚡ HOLD */
+    if(phase === "hold"){
+      pos.x = Math.sin(time * 40) * 0.05
+      pos.y = Math.cos(time * 40) * 0.05
+    }
 
-const intensity = 0.025
-pos.x = Math.sin(time * 50) * intensity
-pos.y = Math.cos(time * 45) * intensity
+    /* 💥 WARP */
+    if(phase === "warp"){
+      pos.z -= delta * 220
+    }
 
-/* slight forward push */
-pos.z -= delta * 2
-}
+    /* 🎥 CAMERA (adjusted for bigger ship) */
+    const offset =
+      viewMode === "inside"
+        ? new THREE.Vector3(0,3,5)
+        : new THREE.Vector3(35,15,25)
 
-/* 💥 WARP (ACCELERATION BURST) */
-if(phase === "warp"){
+    const desired = pos.clone().add(offset)
+    camera.position.lerp(desired, 0.05)
 
-pos.z -= delta * 180
-}
+    camera.lookAt(pos)
 
-/* 🎥 CINEMATIC CAMERA */
-const targetOffset =
-viewMode === "inside"
-? new THREE.Vector3(0,2,0)
-: new THREE.Vector3(18,8,12)
+    /* 🔥 ENGINE LIGHT */
+    if(engineLight.current){
 
-const desired = pos.clone().add(targetOffset)
+      let intensity = 3
+      if(phase === "hold") intensity = 6
+      if(phase === "warp") intensity = 12
 
-/* smoother damping */
-camera.position.lerp(desired, 0.04)
+      engineLight.current.intensity =
+        intensity + Math.sin(time * 10) * 2
+    }
 
-if(viewMode === "inside"){
-camera.lookAt(pos.x, pos.y + 2, pos.z - 25)
-}else{
-camera.lookAt(pos)
-}
+    /* 🎬 ROTATION */
+    ship.current.rotation.y += delta * 0.1
 
-/* 🔥 ENGINE POWER CURVE */
-if(flame.current){
+  })
 
-let intensity = 2
+  if(!active) return null
 
-if(phase === "hold") intensity = 4
-if(phase === "warp") intensity = 8
+  return(
+    <group ref={ship} position={[0,0,220]} rotation={[0,Math.PI,0]}>
 
-flame.current.scale.y = 1 + Math.sin(time * 12) * 0.4
+      {/* 🚀 GLB MODEL */}
+      <primitive object={model} />
 
-flame.current.material.emissiveIntensity =
-intensity + Math.sin(time * 8) * 1.5
-}
+      {/* 🔥 REALISTIC ENGINE LIGHT */}
+      <pointLight
+        ref={engineLight}
+        position={[0,-8,0]}
+        color="#ff5500"
+        intensity={6}
+        distance={50}
+      />
 
-/* ✨ ENERGY FIELD */
-if(glow.current){
-
-let scale = 1.05
-
-if(phase === "hold") scale = 1.12
-if(phase === "warp") scale = 1.2
-
-glow.current.scale.setScalar(
-scale + Math.sin(time * 3) * 0.03
-)
-}
-
-/* 🎬 ROTATION */
-ship.current.rotation.y += delta * 0.1
-
-})
-
-if(!active) return null
-
-return(
-<group ref={ship} position={[0,0,220]} rotation={[Math.PI/2,0,0]} scale={3}>
-
-<mesh>
-<cylinderGeometry args={[1.2,1.8,12,32]} />
-<meshStandardMaterial color="#5e6cff"/>
-</mesh>
-
-<mesh ref={glow}>
-<cylinderGeometry args={[1.2,1.8,12,32]} />
-<meshBasicMaterial color="#6f8cff" transparent opacity={0.15}/>
-</mesh>
-
-<mesh position={[0,6,0]}>
-<sphereGeometry args={[2,32,32]} />
-<meshStandardMaterial emissive="#00ccff"/>
-</mesh>
-
-<mesh position={[3,0,0]}>
-<boxGeometry args={[8,0.4,1]} />
-<meshStandardMaterial color="#888"/>
-</mesh>
-
-<mesh position={[-3,0,0]}>
-<boxGeometry args={[8,0.4,1]} />
-<meshStandardMaterial color="#888"/>
-</mesh>
-
-<mesh ref={flame} position={[0,-8,0]}>
-<coneGeometry args={[1.5,6,32]} />
-<meshStandardMaterial emissive="#ff2200"/>
-</mesh>
-
-</group>
-)
+    </group>
+  )
 }

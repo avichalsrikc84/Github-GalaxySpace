@@ -6,8 +6,8 @@ import * as THREE from "three"
 
 export default function BlackHole() {
 
-  const diskRef = useRef<any>()
-  const glowRef = useRef<any>()
+  const diskRef = useRef<any>(null)
+  const glowRef = useRef<any>(null)
 
   useFrame((state, delta) => {
 

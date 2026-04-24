@@ -21,16 +21,17 @@ import ExitFocusButton from "./ExitFocusButton"
 import RepoInfoPanel from "./RepoInfoPanel"
 import CinematicCamera from "./CinematicCamera"
 import StoryModeController from "./StoryModeController"
-
+import ConstellationMode from "./ConstellationMode"
 import Spaceship from "./Spaceship"
 import WarpTransition from "./WarpTransition"
 import useWarpSound from "./useWarpSound"
 import FloatingObjects from "./FloatingObjects";
+import ConstellationCamera from "./ConstellationCamera"
 
 export default function GalaxyCanvas(){
 
 const { data: session } = useSession()
-
+const [mode,setMode] = useState<"planets" | "mind">("planets")
 const [selected,setSelected] = useState<any>(null)
 const [cinematicMode,setCinematicMode] = useState(false)
 const [storyMode,setStoryMode] = useState(false)
@@ -58,8 +59,8 @@ useState<"idle" | "approach" | "warp">("idle")
 const [showOverlay,setShowOverlay] = useState(false)
 const [viewMode,setViewMode] = useState<"inside" | "outside">("outside")
 
-const cameraRef = useRef<any>()
-const controlsRef = useRef<any>()
+const cameraRef = useRef<any>(null)
+const controlsRef = useRef<any>(null)
 
 useWarpSound(travelPhase === "warp")
 
@@ -204,8 +205,8 @@ borderRadius:"12px"
 {cinematicMode ? "Stop Cinematic" : "Start Cinematic"}
 </button>
 
-<button style={btnStyle} onClick={()=>setStoryMode(!storyMode)}>
-{storyMode ? "Stop Story" : "Start Story"}
+<button onClick={()=>setMode(prev => prev === "planets" ? "mind" : "planets")}>
+🧠 {mode === "mind" ? "Exit Mind" : "Analyze Mind"}
 </button>
 
 <input
@@ -260,7 +261,15 @@ Logout
 
 <Canvas camera={{position:[0,20,120],fov:60}} onCreated={({camera})=>{cameraRef.current=camera}}>
 
-<CinematicCamera enabled={cinematicMode && travelPhase==="idle"} />
+<CinematicCamera 
+  enabled={cinematicMode && travelPhase==="idle"} 
+  targetObject={null}
+/>
+
+<ConstellationCamera 
+  active={mode === "mind"} 
+  controls={controlsRef}
+/>
 
 <ambientLight intensity={2}/>
 <pointLight position={[0,0,0]} intensity={20} color="orange"/>
@@ -281,25 +290,31 @@ Logout
 <DustLanes/>
 <LensingField/>
 <FloatingObjects />
-{activeUser && (
-<RepoPlanets
-selected={selected}
-setSelected={setSelected}
-githubUser={activeUser}
-onReposLoaded={(data:any)=>{
-setRepos(data)
+{/* 🌍 PLANETS MODE */}
+{mode === "planets" && activeUser && (
+  <RepoPlanets
+    selected={selected}
+    setSelected={setSelected}
+    githubUser={activeUser}
+    onReposLoaded={(data:any)=>{
+      setRepos(data)
 
-/* 🔥 FIX: SYNC INTO GALAXY */
-setGalaxies(prev=>{
-return prev.map(g=>{
-if(g.username === activeUser){
-return { ...g, repos: data }
-}
-return g
-})
-})
-}}
-/>
+      /* 🔥 KEEP YOUR EXISTING LOGIC */
+      setGalaxies(prev=>{
+        return prev.map(g=>{
+          if(g.username === activeUser){
+            return { ...g, repos: data }
+          }
+          return g
+        })
+      })
+    }}
+  />
+)}
+
+{/* 🧠 CONSTELLATION MODE */}
+{mode === "mind" && repos.length > 0 && (
+  <ConstellationMode key="mind" repos={repos}/>
 )}
 
 <StoryModeController repos={repos} enabled={storyMode} setSelected={setSelected}/>
@@ -317,7 +332,13 @@ return g
   />
 </EffectComposer>
 
-<OrbitControls ref={controlsRef} enabled={travelPhase==="idle"} maxDistance={180} minDistance={30} enableDamping/>
+<OrbitControls
+  ref={controlsRef}
+  enabled={travelPhase==="idle" && mode !== "mind"}
+  maxDistance={180}
+  minDistance={30}
+  enableDamping
+/>
 
 </Canvas>
 

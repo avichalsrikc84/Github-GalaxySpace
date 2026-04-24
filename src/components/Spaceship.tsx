@@ -5,7 +5,7 @@ import { useFrame, useThree } from "@react-three/fiber"
 import { useGLTF } from "@react-three/drei"
 import * as THREE from "three"
 
-/* 🔥 normalize model (fix scale + center) */
+/* normalize model (fix scale + center) */
 function normalize(scene: THREE.Object3D, targetSize = 35) {
   const box = new THREE.Box3().setFromObject(scene)
   const size = new THREE.Vector3()
@@ -25,8 +25,8 @@ function normalize(scene: THREE.Object3D, targetSize = 35) {
 
 export default function Spaceship({ active, phase, viewMode }: any){
 
-  const ship = useRef<any>()
-  const engineLight = useRef<any>()
+  const ship = useRef<any>(null)
+  const engineLight = useRef<any>(null)
 
   const { camera } = useThree()
 
@@ -47,24 +47,24 @@ export default function Spaceship({ active, phase, viewMode }: any){
     time += delta
     const pos = ship.current.position
 
-    /* 🚀 APPROACH */
+    /*  APPROACH */
     if(phase === "approach"){
       pos.z -= delta * 14
       pos.y = Math.sin(time * 1.5) * 0.4
     }
 
-    /* ⚡ HOLD */
+    /*  HOLD */
     if(phase === "hold"){
       pos.x = Math.sin(time * 40) * 0.05
       pos.y = Math.cos(time * 40) * 0.05
     }
 
-    /* 💥 WARP */
+    /*  WARP */
     if(phase === "warp"){
       pos.z -= delta * 220
     }
 
-    /* 🎥 CAMERA (adjusted for bigger ship) */
+    /*  CAMERA (adjusted for bigger ship) */
     const offset =
       viewMode === "inside"
         ? new THREE.Vector3(0,3,5)
@@ -75,7 +75,7 @@ export default function Spaceship({ active, phase, viewMode }: any){
 
     camera.lookAt(pos)
 
-    /* 🔥 ENGINE LIGHT */
+    /*  ENGINE LIGHT */
     if(engineLight.current){
 
       let intensity = 3
